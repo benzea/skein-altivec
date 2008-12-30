@@ -33,8 +33,8 @@
 #ifndef BRG_ENDIAN_H
 #define BRG_ENDIAN_H
 
-#define IS_BIG_ENDIAN      4321 /* byte 0 is most significant (mc68k) */
-#define IS_LITTLE_ENDIAN   1234 /* byte 0 is least significant (i386) */
+#define IS_BIG_ENDIAN      4321	/* byte 0 is most significant (mc68k) */
+#define IS_LITTLE_ENDIAN   1234	/* byte 0 is least significant (i386) */
 
 /* Include files where endian defines and byteswap functions may reside */
 #if defined( __FreeBSD__ ) || defined( __OpenBSD__ ) || defined( __NetBSD__ )
@@ -123,9 +123,9 @@
       defined( THINK_C ) || defined( __VMCMS__ )
 #  define PLATFORM_BYTE_ORDER IS_BIG_ENDIAN
 
-#elif 0     /* **** EDIT HERE IF NECESSARY **** */
+#elif 0				/* **** EDIT HERE IF NECESSARY **** */
 #  define PLATFORM_BYTE_ORDER IS_LITTLE_ENDIAN
-#elif 0     /* **** EDIT HERE IF NECESSARY **** */
+#elif 0				/* **** EDIT HERE IF NECESSARY **** */
 #  define PLATFORM_BYTE_ORDER IS_BIG_ENDIAN
 #else
 #  error Please edit lines 126 or 128 in brg_endian.h to set the platform byte order
@@ -145,4 +145,4 @@
 #  define PLATFORM_MUST_ALIGN (0)
 #endif
 
-#endif  /* ifndef BRG_ENDIAN_H */
+#endif				/* ifndef BRG_ENDIAN_H */
