@@ -118,18 +118,18 @@ int Skein1024_InitExt(Skein1024_Ctxt_t * ctx, size_t hashBitLen,
 		      u64b_t treeInfo, const u08b_t * key, size_t keyBytes);
 
 /*
-**   Skein APIs for tree hash:
-**		Final_Pad:  pad, do final block, but no OUTPUT type
-**		Output:     do just the output stage
+**   Skein APIs for MAC and tree hash:
+**      Final_Pad:  pad, do final block, but no OUTPUT type
+**      Output:     do just the output stage
 */
-#ifndef SKEIN_TREE_HASH
-#define SKEIN_TREE_HASH (1)
-#endif
-#if  SKEIN_TREE_HASH
 int Skein_256_Final_Pad(Skein_256_Ctxt_t * ctx, u08b_t * hashVal);
 int Skein_512_Final_Pad(Skein_512_Ctxt_t * ctx, u08b_t * hashVal);
 int Skein1024_Final_Pad(Skein1024_Ctxt_t * ctx, u08b_t * hashVal);
 
+#ifndef SKEIN_TREE_HASH
+#define SKEIN_TREE_HASH (1)
+#endif
+#if  SKEIN_TREE_HASH
 int Skein_256_Output(Skein_256_Ctxt_t * ctx, u08b_t * hashVal);
 int Skein_512_Output(Skein_512_Ctxt_t * ctx, u08b_t * hashVal);
 int Skein1024_Output(Skein1024_Ctxt_t * ctx, u08b_t * hashVal);
@@ -159,7 +159,7 @@ int Skein1024_Output(Skein1024_Ctxt_t * ctx, u08b_t * hashVal);
 
 /* tweak word T[1]: tree level bit field mask */
 #define SKEIN_T1_TREE_LVL_MASK  (((u64b_t)0x7F) << SKEIN_T1_POS_TREE_LVL)
-#define	SKEIN_T1_TREE_LEVEL(n)  (((u64b_t) (n)) << SKEIN_T1_POS_TREE_LVL)
+#define SKEIN_T1_TREE_LEVEL(n)  (((u64b_t) (n)) << SKEIN_T1_POS_TREE_LVL)
 
 /* tweak word T[1]: block type field */
 #define SKEIN_BLK_TYPE_KEY      ( 0)	/* key, for MAC and KDF */
@@ -195,6 +195,8 @@ int Skein1024_Output(Skein1024_Ctxt_t * ctx, u08b_t * hashVal);
 #define SKEIN_MK_64(hi32,lo32)  ((lo32) + (((u64b_t) (hi32)) << 32))
 #define SKEIN_SCHEMA_VER        SKEIN_MK_64(SKEIN_VERSION,SKEIN_ID_STRING_LE)
 #define SKEIN_KS_PARITY         SKEIN_MK_64(0x55555555,0x55555555)
+
+#define SKEIN_CFG_STR_LEN       (4*8)
 
 /* bit field definitions in config block treeInfo word */
 #define SKEIN_CFG_TREE_LEAF_SIZE_POS  ( 0)
@@ -234,7 +236,7 @@ int Skein1024_Output(Skein1024_Ctxt_t * ctx, u08b_t * hashVal);
 #define Skein_Start_New_Type(ctxPtr,BLK_TYPE)   \
     { Skein_Set_T0_T1(ctxPtr,0,SKEIN_T1_FLAG_FIRST | SKEIN_T1_BLK_TYPE_##BLK_TYPE); (ctxPtr)->h.bCnt=0; }
 
-#define Skein_Clear_First_Flag(hdr)	     { (hdr).T[1] &= ~SKEIN_T1_FLAG_FIRST;       }
+#define Skein_Clear_First_Flag(hdr)      { (hdr).T[1] &= ~SKEIN_T1_FLAG_FIRST;       }
 #define Skein_Set_Bit_Pad_Flag(hdr)      { (hdr).T[1] |=  SKEIN_T1_FLAG_BIT_PAD;     }
 
 #define Skein_Set_Tree_Level(hdr,height) { (hdr).T[1] |= SKEIN_T1_TREE_LEVEL(height);}
