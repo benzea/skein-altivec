@@ -77,8 +77,10 @@
 
 #include <altivec.h>
 
+/* 64bit Altivec calculation macros */
 #define add64_vectors	vector unsigned char carry_mov = {0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0};
-
+/* 64bit add in 4 instructions, should need 3 cycles by itself, but could be
+ * less if the compiler reorders instructions. */
 #define vec_add64(a, b) ({ \
 	vector unsigned int __result;					\
 	vector unsigned int __carry;					\
@@ -94,6 +96,15 @@
 	vector unsigned char perm_load_a = {0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};			\
 	vector unsigned char perm_load_b = {8, 9, 10, 11, 12, 13, 14, 15, 8, 9, 10, 11, 12, 13, 14, 15};
 
+/* Two 64bit left rotations in a 128bit Vector. These two rotations are
+ * independent of each other. The rotation needs to be a constant (as the
+ * values are stored in immediates for the instructions).
+ *
+ * This calculation needs 3-9 instructions (most of the time 9). All
+ * instructions are in the VPERM unit except for the splat ones. (May differ
+ * on some machines.) So this code should need 7, or less cycles (if interleaved
+ * with other calculations and/or some of the instructions are not needed.
+ **/
 #define vec_rotl64(input, rot_a, rot_b)					\
 {									\
 	vector unsigned char _tmp1, _tmp2;				\
