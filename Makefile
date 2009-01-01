@@ -1,4 +1,4 @@
-CFLAGS=-mcpu=G4 -maltivec -O2
+CFLAGS=-mcpu=G4 -maltivec -O2 -Wall
 
 all: test speed_test
 
