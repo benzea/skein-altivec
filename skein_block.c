@@ -166,7 +166,7 @@ void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 			     size_t blkCnt, size_t byteCntAdd)
 {	/* do it in C with altivec! */
 	size_t r;
-	u64b_t ks[5];
+	u64b_t ks[6] __attribute__((aligned(16)));
 	u64b_t ts[3] __attribute__((aligned(16)));
 	u64b_t KeyInject_add[4] __attribute__((aligned(16)));
 
@@ -223,11 +223,11 @@ void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 		vec_st(tmp_vec0, 0x00, (unsigned int*) ks);
 		vec_st(tmp_vec1, 0x10, (unsigned int*) ks);
 
-		ks[4] = SKEIN_KS_PARITY;
-		ks[4] ^= ks[0];
-		ks[4] ^= ks[1];	
-		ks[4] ^= ks[2];
-		ks[4] ^= ks[3];
+		tmp_vec0 = vec_xor(tmp_vec0, tmp_vec1);
+		vec_st(tmp_vec0, 0x20, (unsigned int*) ks);
+
+		ks[4] ^= ks[5];
+		ks[4] ^= SKEIN_KS_PARITY;
 
 		ts[0] = ctx->h.T[0];
 		ts[1] = ctx->h.T[1];
@@ -397,7 +397,7 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 			     size_t blkCnt, size_t byteCntAdd)
 {	/* do it in C with altivec! */
 	size_t r;
-	u64b_t ks[9];
+	u64b_t ks[10] __attribute__((aligned(16)));
 	u64b_t ts[3] __attribute__((aligned(16)));
 	u64b_t KeyInject_add[8] __attribute__((aligned(16)));
 
@@ -461,19 +461,18 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 		tmp_vec2 = vec_perm(X1, X3, perm_load_upper);
 		tmp_vec3 = vec_perm(X1, X3, perm_load_lower);
 
-		ks[8] = SKEIN_KS_PARITY;
 		vec_st(tmp_vec0, 0x00, (unsigned int*) ks);
-		ks[8] ^= ks[0];
-		ks[8] ^= ks[1];	
 		vec_st(tmp_vec1, 0x10, (unsigned int*) ks);
-		ks[8] ^= ks[2];
-		ks[8] ^= ks[3];
 		vec_st(tmp_vec2, 0x20, (unsigned int*) ks);
-		ks[8] ^= ks[4];
-		ks[8] ^= ks[5];
 		vec_st(tmp_vec3, 0x30, (unsigned int*) ks);
-		ks[8] ^= ks[6];
-		ks[8] ^= ks[7];
+
+		tmp_vec0 = vec_xor(tmp_vec0, tmp_vec1);
+		tmp_vec0 = vec_xor(tmp_vec0, tmp_vec2);
+		tmp_vec0 = vec_xor(tmp_vec0, tmp_vec3);
+		vec_st(tmp_vec0, 0x40, (unsigned int*) ks);
+
+		ks[8] ^= ks[9];
+		ks[8] ^= SKEIN_KS_PARITY;
 
 		ts[0] = ctx->h.T[0];
 		ts[1] = ctx->h.T[1];
@@ -711,7 +710,7 @@ void Skein1024_Process_Block(Skein1024_Ctxt_t * ctx, const u08b_t * blkPtr,
 			     size_t blkCnt, size_t byteCntAdd)
 {	/* do it in C with altivec! */
 	size_t r;
-	u64b_t ks[17];
+	u64b_t ks[18] __attribute__((aligned(16)));
 	u64b_t ts[3] __attribute__((aligned(16)));
 	u64b_t KeyInject_add[16] __attribute__((aligned(16)));
 
@@ -797,23 +796,17 @@ void Skein1024_Process_Block(Skein1024_Ctxt_t * ctx, const u08b_t * blkPtr,
 		vec_st(tmp_vec6, 0x60, (unsigned int*) ks);
 		vec_st(tmp_vec7, 0x70, (unsigned int*) ks);
 
-		ks[16] = SKEIN_KS_PARITY;
-		ks[16] ^= ks[ 0];
-		ks[16] ^= ks[ 1];	
-		ks[16] ^= ks[ 2];
-		ks[16] ^= ks[ 3];
-		ks[16] ^= ks[ 4];
-		ks[16] ^= ks[ 5];
-		ks[16] ^= ks[ 6];
-		ks[16] ^= ks[ 7];
-		ks[16] ^= ks[ 8];
-		ks[16] ^= ks[ 9];	
-		ks[16] ^= ks[10];
-		ks[16] ^= ks[11];
-		ks[16] ^= ks[12];
-		ks[16] ^= ks[13];
-		ks[16] ^= ks[14];
-		ks[16] ^= ks[15];
+		tmp_vec0 = vec_xor(tmp_vec0, tmp_vec1);
+		tmp_vec0 = vec_xor(tmp_vec0, tmp_vec2);
+		tmp_vec0 = vec_xor(tmp_vec0, tmp_vec3);
+		tmp_vec0 = vec_xor(tmp_vec0, tmp_vec4);
+		tmp_vec0 = vec_xor(tmp_vec0, tmp_vec5);
+		tmp_vec0 = vec_xor(tmp_vec0, tmp_vec6);
+		tmp_vec0 = vec_xor(tmp_vec0, tmp_vec7);
+		vec_st(tmp_vec0, 0x80, (unsigned int*) ks);
+
+		ks[16] ^= ks[17];
+		ks[16] ^= SKEIN_KS_PARITY;
 
 		ts[0] = ctx->h.T[0];
 		ts[1] = ctx->h.T[1];
