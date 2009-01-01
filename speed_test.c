@@ -52,10 +52,14 @@ int main(int argc, char **argv)
 	memset(hash, 0, 512/8);
 	
 	Init(&state, 512);
-	f = fopen(argv[1], "r");
-	if (f == NULL) {
-		printf("Failed to open the file!\n");
-		return 1;
+	if (strcmp(argv[1], "-")) {
+        	f = fopen(argv[1], "r");
+		if (f == NULL) {
+			printf("Failed to open the file!\n");
+			return 1;
+		}
+	} else {
+		f = stdin;
 	}
 	
 	getrusage(RUSAGE_SELF, &start);
@@ -66,7 +70,7 @@ int main(int argc, char **argv)
 	getrusage(RUSAGE_SELF, &end);
 	
 	for (i = 0; i < 512 / 8; i++)
-		printf("%02X", hash[i]);
+		printf("%0.2X", hash[i]);
 	timeval_subtract(&start.ru_utime, &end.ru_utime, &start.ru_utime);
 	printf("\n");
 	printf("Needed %i seconds and %i useconds.\n", start.ru_utime.tv_sec, start.ru_utime.tv_usec);
