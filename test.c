@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define T(d, r) { .data = d, .result = r, .datalen = 8 * (sizeof(d) - 1), }
-#define TN(n, d, r) { .data = d, .result = r, .datalen = n, }
+#define T(d, r) { .data = (unsigned char*) d, .result = (unsigned char*) r, .datalen = 8 * (sizeof(d) - 1), }
+#define TN(n, d, r) { .data = (unsigned char*) d, .result = (unsigned char*) r, .datalen = n, }
 
 static struct {
 	unsigned char *data, *result;

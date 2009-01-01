@@ -37,7 +37,7 @@ timeval_subtract (struct timeval *result, struct timeval *x, struct timeval *y)
 int main(int argc, char **argv)
 {
 	BitSequence hash[512 / 8];
-	char *buffer = malloc(LEN);
+	unsigned char *buffer = malloc(LEN);
 	unsigned int i;
 	size_t len;
 	hashState state;
@@ -63,16 +63,16 @@ int main(int argc, char **argv)
 	}
 	
 	getrusage(RUSAGE_SELF, &start);
-	while (len = fread(buffer, 1, LEN, f)) {
+	while ((len = fread(buffer, 1, LEN, f))) {
 		Update(&state, buffer, len*8);
 	}
 	Final(&state, hash);
 	getrusage(RUSAGE_SELF, &end);
 	
 	for (i = 0; i < sizeof(hash); i++)
-		printf("%0.2X", hash[i]);
+		printf("%.2X", hash[i]);
 	timeval_subtract(&start.ru_utime, &end.ru_utime, &start.ru_utime);
 	printf("\n");
-	printf("Needed %i seconds and %i useconds.\n", start.ru_utime.tv_sec, start.ru_utime.tv_usec);
+	printf("Needed %i seconds and %i useconds.\n", (unsigned int) start.ru_utime.tv_sec, (unsigned int) start.ru_utime.tv_usec);
 	return 0;
 }
