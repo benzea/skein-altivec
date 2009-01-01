@@ -159,121 +159,210 @@ u64b_t RotL_64(u64b_t x, uint_t N)
 
 
 
+#define InjectKey_256_altivec(r)					\
+	KeyInject_add[0] = ks[((r)+0) % (4+1)];				\
+	KeyInject_add[2] = ks[((r)+1) % (4+1)] + ts[((r)+0) % 3];	\
+	KeyInject_add[1] = ks[((r)+2) % (4+1)] + ts[((r)+1) % 3];	\
+	KeyInject_add[3] = ks[((r)+3) % (4+1)] + (r);			\
+									\
+	tmp_vec0 = vec_ld(0x00, (unsigned int*) KeyInject_add);		\
+	tmp_vec1 = vec_ld(0x10, (unsigned int*) KeyInject_add);		\
+	X0 = vec_add64(X0, tmp_vec0);					\
+	X1 = vec_add64(X1, tmp_vec1);
+
+#define Skein_Get64_256_altivec(addr)				\
+	vector unsigned char __load_vec;			\
+								\
+	tmp_vec0 = vec_ld(0, (unsigned int*) (addr));		\
+	w0 = vec_ld(0x10, (unsigned int*) (addr));		\
+	w1 = vec_ld(0x1f, (unsigned int*) (addr));		\
+								\
+	__load_vec = vec_lvsl(0, (addr));			\
+	__load_vec = vec_add(__load_vec, perm_load_swap_endian); \
+								\
+	w1 = vec_perm(w0, w1, __load_vec);			\
+	w0 = vec_perm(tmp_vec0, w0, __load_vec);		\
+								\
+	/* ALTIVEC ORDER */					\
+	tmp_vec0 = w0;						\
+	w0 = vec_perm(w0, w1, perm_load_upper);			\
+	w1 = vec_perm(tmp_vec0, w1, perm_load_lower);
 
 
 void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 			     size_t blkCnt, size_t byteCntAdd)
-{				/* do it in C */
-	enum {
-		WCNT = SKEIN_256_STATE_WORDS
-	};
+{	/* do it in C with altivec! */
 	size_t i, r;
-	u64b_t ts[3];		/* key schedule: tweak */
-	u64b_t ks[WCNT + 1];	/* key schedule: chaining vars */
-	u64b_t X[WCNT];		/* local copy of context vars */
-	u64b_t w[WCNT];		/* local copy of input block */
+	u64b_t ks[5];
+	u64b_t ts[3] __attribute__((aligned(16)));
+	u64b_t KeyInject_add[4] __attribute__((aligned(16)));
+
+	/* The Xi is only used for storing the data. */
+	u64b_t Xi[4] __attribute__((aligned(16)));
+
+	vector unsigned int X0, X1;
+	vector unsigned int w0, w1;
+
+	/* special vectors for the altivec calculations */
+	rotl64_vectors
+	add64_vectors
+	vector unsigned char perm_load_upper = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17};
+	vector unsigned char perm_load_lower = {0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
+	vector unsigned char perm_swap_u64 = {8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7};
+	/* This vector can be added to a vector produced with vec_lvsl (load vector for shift left), so that
+	 * unaligned little endian data, can be aligned *and* byteswapped at the same time. */
+	vector char perm_load_swap_endian = {7, 5, 3, 1, -1, -3, -5, -7, 7, 5, 3, 1, -1, -3, -5, -7,};
+
+	vector unsigned int tmp_vec0, tmp_vec1;
+	unsigned int dst_control_word = 0x20020020; /* Preload two blocks of 32 bytes each. */
+
+	Skein_assert(blkCnt != 0);	/* never call with blkCnt == 0! */
+
+	Xi[0] = ctx->X[0];
+	Xi[1] = ctx->X[1];
+	Xi[2] = ctx->X[2];
+	Xi[3] = ctx->X[3];
+
+	X0 = vec_ld(0x00, (unsigned int*) Xi);
+	X1 = vec_ld(0x10, (unsigned int*) Xi);
+
+	/* ALTIVEC ORDER */
+	tmp_vec0 = X0;
+	X0 = vec_perm(X0, X1, perm_load_upper);
+	X1 = vec_perm(tmp_vec0, X1, perm_load_lower);
+
 
 	Skein_assert(blkCnt != 0);	/* never call with blkCnt == 0! */
 	do {
+		u64b_t tmp;
+
+		vec_dst(blkPtr, dst_control_word, 0);
+
 		/* this implementation only supports 2**64 input bytes (no carry out here) */
 		ctx->h.T[0] += byteCntAdd;	/* update processed length */
 
-		/* precompute the key schedule for this block */
-		ks[WCNT] = SKEIN_KS_PARITY;
-		for (i = 0; i < WCNT; i++) {
-			ks[i] = ctx->X[i];
-			ks[WCNT] ^= ctx->X[i];	/* compute overall parity */
-		}
+		/* Store ks in normal order. */
+		tmp_vec0 = vec_perm(X0, X1, perm_load_upper);
+		tmp_vec1 = vec_perm(X0, X1, perm_load_lower);
+
+		vec_st(tmp_vec0, 0x00, (unsigned int*) ks);
+		vec_st(tmp_vec1, 0x10, (unsigned int*) ks);
+
+		ks[4] = SKEIN_KS_PARITY;
+		ks[4] ^= ks[0];
+		ks[4] ^= ks[1];	
+		ks[4] ^= ks[2];
+		ks[4] ^= ks[3];
+
 		ts[0] = ctx->h.T[0];
 		ts[1] = ctx->h.T[1];
 		ts[2] = ts[0] ^ ts[1];
+		Skein_Get64_256_altivec(blkPtr); /* load input block into w registers */
+/*	vec_st(w0, 0x00, (unsigned int*) Xi);
+	vec_st(w1, 0x10, (unsigned int*) Xi);
+		printf("input: %0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x\n", (unsigned int)(Xi[0] >> 32), (unsigned int)Xi[0], (unsigned int)(Xi[1] >> 32), (unsigned int)Xi[1], (unsigned int)(Xi[2] >> 32), (unsigned int)Xi[2], (unsigned int)(Xi[3] >> 32), (unsigned int)Xi[3]);
 
-		Skein_Get64_LSB_First(w, blkPtr, WCNT);	/* get input block in little-endian format */
-		Skein_Show_Block(BLK_BITS, &ctx->h, ctx->X, blkPtr, w, ks, ts);
-		for (i = 0; i < WCNT; i++) {	/* do the first full key injection */
-			X[i] = w[i] + ks[i];
-		}
-		X[WCNT - 3] += ts[0];
-		X[WCNT - 2] += ts[1];
+	vec_st(X0, 0x00, (unsigned int*) Xi);
+	vec_st(X1, 0x10, (unsigned int*) Xi);
+		printf("ts: %0.8x%0.8x, %0.8x%0.8x\n", (unsigned int)(ts[0] >> 32), (unsigned int)ts[0], (unsigned int)(ts[1] >> 32), (unsigned int)ts[1]);
+		printf("%0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x\n", (unsigned int)(Xi[0] >> 32), (unsigned int)Xi[0], (unsigned int)(Xi[1] >> 32), (unsigned int)Xi[1], (unsigned int)(Xi[2] >> 32), (unsigned int)Xi[2], (unsigned int)(Xi[3] >> 32), (unsigned int)Xi[3]);
+*/
 
-		Skein_Show_Round(BLK_BITS, &ctx->h, SKEIN_RND_KEY_INITIAL, X);	/* show starting state values */
+		tmp_vec1 = vec_ld(0, (unsigned int*)ts);
+		tmp_vec1 = vec_sld(tmp_vec1, tmp_vec1, 8);
+		tmp_vec0 = vec_sld(X0, X1, 8);
+		tmp_vec0 = vec_add64(tmp_vec0, tmp_vec1);
+
+		X0 = vec_perm(X0, tmp_vec0, perm_load_upper);
+		X1 = vec_perm(tmp_vec0, X1, perm_load_lower);
+
+/*	vec_st(X0, 0x00, (unsigned int*) Xi);
+	vec_st(X1, 0x10, (unsigned int*) Xi);
+		printf("%0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x\n", (unsigned int)(Xi[0] >> 32), (unsigned int)Xi[0], (unsigned int)(Xi[1] >> 32), (unsigned int)Xi[1], (unsigned int)(Xi[2] >> 32), (unsigned int)Xi[2], (unsigned int)(Xi[3] >> 32), (unsigned int)Xi[3]);
+*/
+		X0 = vec_add64(X0, w0);
+		X1 = vec_add64(X1, w1);
 
 		for (r = 1; r <= SKEIN_256_ROUNDS_TOTAL / 8; r++) {	/* unroll 8 rounds */
-			X[0] += X[1];
-			X[1] = RotL_64(X[1], R_256_0_0);
-			X[1] ^= X[0];
-			X[2] += X[3];
-			X[3] = RotL_64(X[3], R_256_0_1);
-			X[3] ^= X[2];
-			Skein_Show_Round(BLK_BITS, &ctx->h, 8 * r - 7, X);
+			X0 = vec_add64(X0, X1);
+			vec_rotl64(X1, R_256_0_0, R_256_0_1);
+			X1 = vec_xor(X1, X0);
 
-			X[0] += X[3];
-			X[3] = RotL_64(X[3], R_256_1_0);
-			X[3] ^= X[0];
-			X[2] += X[1];
-			X[1] = RotL_64(X[1], R_256_1_1);
-			X[1] ^= X[2];
-			Skein_Show_Round(BLK_BITS, &ctx->h, 8 * r - 6, X);
+			X1 = vec_perm(X1, X1, perm_swap_u64);
 
-			X[0] += X[1];
-			X[1] = RotL_64(X[1], R_256_2_0);
-			X[1] ^= X[0];
-			X[2] += X[3];
-			X[3] = RotL_64(X[3], R_256_2_1);
-			X[3] ^= X[2];
-			Skein_Show_Round(BLK_BITS, &ctx->h, 8 * r - 5, X);
+			X0 = vec_add64(X0, X1);
+			vec_rotl64(X1, R_256_1_0, R_256_1_1);
+			X1 = vec_xor(X1, X0);
 
-			X[0] += X[3];
-			X[3] = RotL_64(X[3], R_256_3_0);
-			X[3] ^= X[0];
-			X[2] += X[1];
-			X[1] = RotL_64(X[1], R_256_3_1);
-			X[1] ^= X[2];
-			Skein_Show_Round(BLK_BITS, &ctx->h, 8 * r - 4, X);
-			InjectKey(2 * r - 1);
+			X1 = vec_perm(X1, X1, perm_swap_u64);
 
-			X[0] += X[1];
-			X[1] = RotL_64(X[1], R_256_4_0);
-			X[1] ^= X[0];
-			X[2] += X[3];
-			X[3] = RotL_64(X[3], R_256_4_1);
-			X[3] ^= X[2];
-			Skein_Show_Round(BLK_BITS, &ctx->h, 8 * r - 3, X);
+			X0 = vec_add64(X0, X1);
+			vec_rotl64(X1, R_256_2_0, R_256_2_1);
+			X1 = vec_xor(X1, X0);
 
-			X[0] += X[3];
-			X[3] = RotL_64(X[3], R_256_5_0);
-			X[3] ^= X[0];
-			X[2] += X[1];
-			X[1] = RotL_64(X[1], R_256_5_1);
-			X[1] ^= X[2];
-			Skein_Show_Round(BLK_BITS, &ctx->h, 8 * r - 2, X);
+			X1 = vec_perm(X1, X1, perm_swap_u64);
 
-			X[0] += X[1];
-			X[1] = RotL_64(X[1], R_256_6_0);
-			X[1] ^= X[0];
-			X[2] += X[3];
-			X[3] = RotL_64(X[3], R_256_6_1);
-			X[3] ^= X[2];
-			Skein_Show_Round(BLK_BITS, &ctx->h, 8 * r - 1, X);
+			X0 = vec_add64(X0, X1);
+			vec_rotl64(X1, R_256_3_0, R_256_3_1);
+			X1 = vec_xor(X1, X0);
 
-			X[0] += X[3];
-			X[3] = RotL_64(X[3], R_256_7_0);
-			X[3] ^= X[0];
-			X[2] += X[1];
-			X[1] = RotL_64(X[1], R_256_7_1);
-			X[1] ^= X[2];
-			Skein_Show_Round(BLK_BITS, &ctx->h, 8 * r, X);
-			InjectKey(2 * r);
+			X1 = vec_perm(X1, X1, perm_swap_u64);
+
+			InjectKey_256_altivec(2 * r - 1);
+
+			/* 0,1; 2,3*/
+			X0 = vec_add64(X0, X1);
+			vec_rotl64(X1, R_256_4_0, R_256_4_1);
+			X1 = vec_xor(X1, X0);
+
+			X1 = vec_perm(X1, X1, perm_swap_u64);
+
+			X0 = vec_add64(X0, X1);
+			vec_rotl64(X1, R_256_5_0, R_256_5_1);
+			X1 = vec_xor(X1, X0);
+
+			X1 = vec_perm(X1, X1, perm_swap_u64);
+
+			X0 = vec_add64(X0, X1);
+			vec_rotl64(X1, R_256_6_0, R_256_6_1);
+			X1 = vec_xor(X1, X0);
+
+			X1 = vec_perm(X1, X1, perm_swap_u64);
+
+			X0 = vec_add64(X0, X1);
+			vec_rotl64(X1, R_256_7_0, R_256_7_1);
+			X1 = vec_xor(X1, X0);
+
+			X1 = vec_perm(X1, X1, perm_swap_u64);
+
+			InjectKey_256_altivec(2 * r);
 		}
 		/* do the final "feedforward" xor, update context chaining vars */
-		for (i = 0; i < WCNT; i++)
-			ctx->X[i] = X[i] ^ w[i];
-		Skein_Show_Round(BLK_BITS, &ctx->h, SKEIN_RND_FEED_FWD, ctx->X);
+		X0 = vec_xor(X0, w0);
+		X1 = vec_xor(X1, w1);
 
 		Skein_Clear_First_Flag(ctx->h);	/* clear the start bit */
 		blkPtr += SKEIN_256_BLOCK_BYTES;
 	} while (--blkCnt);
+
+	/* UNDO ALTIVEC ORDER */
+	tmp_vec0 = X0;
+	X0 = vec_perm(X0, X1, perm_load_upper);
+	X1 = vec_perm(tmp_vec0, X1, perm_load_lower);
+
+	vec_st(X0, 0x00, (unsigned int*) Xi);
+	vec_st(X1, 0x10, (unsigned int*) Xi);
+
+	vec_dss(0);
+
+	ctx->X[0] = Xi[0];
+	ctx->X[1] = Xi[1];
+	ctx->X[2] = Xi[2];
+	ctx->X[3] = Xi[3];
 }
+
+#undef InjectKey_256_altivec
+#undef Skein_Get64_256_altivec
 
 #if defined(SKEIN_CODE_SIZE) || defined(SKEIN_PERF)
 size_t Skein_256_Process_Block_CodeSize(void)
@@ -307,7 +396,7 @@ uint_t Skein_256_Unroll_Cnt(void)
 	X2 = vec_add64(X2, tmp_vec2);					\
 	X3 = vec_add64(X3, tmp_vec3);					\
 
-#define Skein_Get64_512_Altivec(addr)				\
+#define Skein_Get64_512_altivec(addr)				\
 	vector unsigned char __load_vec;			\
 								\
 	tmp_vec0 = vec_ld(0, (unsigned int*) (addr));		\
@@ -417,7 +506,7 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 		ts[0] = ctx->h.T[0];
 		ts[1] = ctx->h.T[1];
 		ts[2] = ts[0] ^ ts[1];
-		Skein_Get64_512_Altivec(blkPtr); /* load input block into w[] registers */
+		Skein_Get64_512_altivec(blkPtr); /* load input block into w[] registers */
 
 		tmp_vec2 = vec_ld(0, (unsigned int*)ts);
 		tmp_vec0 = vec_sld(X1, X3, 8);
