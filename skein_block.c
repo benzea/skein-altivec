@@ -171,17 +171,12 @@ u64b_t RotL_64(u64b_t x, uint_t N)
 	X1 = vec_add64(X1, tmp_vec1);
 
 #define Skein_Get64_256_altivec(addr)				\
-	vector unsigned char __load_vec;			\
-								\
 	tmp_vec0 = vec_ld(0, (unsigned int*) (addr));		\
 	w0 = vec_ld(0x10, (unsigned int*) (addr));		\
 	w1 = vec_ld(0x1f, (unsigned int*) (addr));		\
 								\
-	__load_vec = vec_lvsl(0, (addr));			\
-	__load_vec = vec_add(__load_vec, perm_load_swap_endian); \
-								\
-	w1 = vec_perm(w0, w1, __load_vec);			\
-	w0 = vec_perm(tmp_vec0, w0, __load_vec);		\
+	w1 = vec_perm(w0, w1, load_vec);			\
+	w0 = vec_perm(tmp_vec0, w0, load_vec);		\
 								\
 	/* ALTIVEC ORDER */					\
 	tmp_vec0 = w0;						\
@@ -209,12 +204,16 @@ void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 	vector unsigned char perm_load_upper = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17};
 	vector unsigned char perm_load_lower = {0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
 	vector unsigned char perm_swap_u64 = {8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7};
-	/* This vector can be added to a vector produced with vec_lvsl (load vector for shift left), so that
-	 * unaligned little endian data, can be aligned *and* byteswapped at the same time. */
-	vector char perm_load_swap_endian = {7, 5, 3, 1, -1, -3, -5, -7, 7, 5, 3, 1, -1, -3, -5, -7,};
+	/* The byte offset of the input data will be added to this (using vec_lvsl).
+	 * It is then possible to load the input data, and swap its endianness at
+	 * the same time. */
+	vector char load_vec = {7, 5, 3, 1, -1, -3, -5, -7, 7, 5, 3, 1, -1, -3, -5, -7,};
 
 	vector unsigned int tmp_vec0, tmp_vec1;
 	unsigned int dst_control_word = 0x20020020; /* Preload two blocks of 32 bytes each. */
+
+	tmp_vec0 = (vector unsigned int) vec_lvsl(0, blkPtr);
+	load_vec = vec_add((vector char) tmp_vec0, load_vec);
 
 	Skein_assert(blkCnt != 0);	/* never call with blkCnt == 0! */
 
@@ -405,13 +404,10 @@ uint_t Skein_256_Unroll_Cnt(void)
 	w2 = vec_ld(0x30, (unsigned int*) (addr));		\
 	w3 = vec_ld(0x3f, (unsigned int*) (addr));		\
 								\
-	__load_vec = vec_lvsl(0, (addr));			\
-	__load_vec = vec_add(__load_vec, perm_load_swap_endian); \
-								\
-	w3 = vec_perm(w2, w3, __load_vec);			\
-	w2 = vec_perm(w1, w2, __load_vec);			\
-	w1 = vec_perm(w0, w1, __load_vec);			\
-	w0 = vec_perm(tmp_vec0, w0, __load_vec);		\
+	w3 = vec_perm(w2, w3, load_vec);			\
+	w2 = vec_perm(w1, w2, load_vec);			\
+	w1 = vec_perm(w0, w1, load_vec);			\
+	w0 = vec_perm(tmp_vec0, w0, load_vec);		\
 								\
 	/* ALTIVEC ORDER */					\
 	tmp_vec0 = w0;						\
@@ -443,12 +439,16 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 	vector unsigned char perm_load_upper = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17};
 	vector unsigned char perm_load_lower = {0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
 	vector unsigned char perm_swap_u64 = {8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7};
-	/* This vector can be added to a vector produced with vec_lvsl (load vector for shift left), so that
-	 * unaligned little endian data, can be aligned *and* byteswapped at the same time. */
-	vector char perm_load_swap_endian = {7, 5, 3, 1, -1, -3, -5, -7, 7, 5, 3, 1, -1, -3, -5, -7,};
+	/* The byte offset of the input data will be added to this (using vec_lvsl).
+	 * It is then possible to load the input data, and swap its endianness at
+	 * the same time. */
+	vector char load_vec = {7, 5, 3, 1, -1, -3, -5, -7, 7, 5, 3, 1, -1, -3, -5, -7,};
 
 	vector unsigned int tmp_vec0, tmp_vec1, tmp_vec2, tmp_vec3;
 	unsigned int dst_control_word = 0x40020040; /* Preload two blocks of 64 bytes each. */
+
+	tmp_vec0 = (vector unsigned int) vec_lvsl(0, blkPtr);
+	load_vec = vec_add((vector char) tmp_vec0, load_vec);
 
 	Skein_assert(blkCnt != 0);	/* never call with blkCnt == 0! */
 
