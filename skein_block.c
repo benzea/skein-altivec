@@ -71,6 +71,9 @@
  *   * 64 bit rotate in normal powerpc: should be 8 instructions
  *                                      (GCC does *much* worst than this)
  *   * 64 bit xor: 2 instructions
+ *
+ *
+ * The 256 and 1024 bit implementations are both slightly slower.
  */
 
 
@@ -298,7 +301,7 @@ void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 
 			InjectKey_256_altivec(2 * r);
 		}
-		/* do the final "feedforward" xor, update context chaining vars */
+		/* do the final "feedforward" xor */
 		X0 = vec_xor(X0, w0);
 		X1 = vec_xor(X1, w1);
 
@@ -568,7 +571,7 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 			InjectKey_512_altivec(2 * r);
 		}
 
-		/* do the final "feedforward" xor, update context chaining vars */
+		/* do the final "feedforward" xor */
 		X0 = vec_xor(X0, w0);
 		X1 = vec_xor(X1, w1);
 		X2 = vec_xor(X2, w2);
@@ -982,7 +985,7 @@ void Skein1024_Process_Block(Skein1024_Ctxt_t * ctx, const u08b_t * blkPtr,
 
 			InjectKey_1024_altivec(2 * r);
 		}
-		/* do the final "feedforward" xor, update context chaining vars */
+		/* do the final "feedforward" xor */
 		X0 = vec_xor(X0, w0);
 		X1 = vec_xor(X1, w1);
 		X2 = vec_xor(X2, w2);
