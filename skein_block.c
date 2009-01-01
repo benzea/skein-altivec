@@ -9,6 +9,68 @@
 **
 ************************************************************************/
 
+/* About the Altivec Optimization (512 bit)
+ * 
+ * Altivec has 32 128bit registers, which can be used as 8, 16 or 32 bit
+ * integers, or 32/64 bit floating point values. Altivec does not support
+ * 64bit operations natively, but we can still do two 64 bit calculations
+ * at the same time with some tricks.
+ *
+ * The important part here is to note that the state has two different kinds of
+ * registers. There are eight 64bit values, but 4 (the even ones) are always
+ * used as the target for the addition, and the other 4 (the odd ones) are the
+ * target of the xor (and are shifted).
+ * Now this does not lend to the way that altivec works, because an even and
+ * odd value would end up in the same register, and we cannot perform the same
+ * operation on both words. However, we can change the order:
+ * (Brackets show which values are together in a vector.)
+ *  Instead of:  (0, 1), (2, 3), (4, 5), (6, 7)
+ *  we use:      (0, 2), (4, 6), (1, 3), (5, 7)
+ * Now the algorithm can do two calculations in parallel
+ *  0 = 0 + 1;
+ *  2 = 2 + 3;
+ *  rotate(1, a);
+ *  rotate(3, b);
+ *  1 = 0 ^ 1
+ *  3 = 2 ^ 3
+ * Becomes:
+ *  v0 = v0 + v2;
+ *  rotate(v2, a, b);
+ *  v0 = v0 ^ v2;
+ *
+ * If we now look at the different steps, we notice that the calculations always
+ * happens on input words. The words in the first two vectors are always the
+ * destination of the addition, and the words of the last two vectors the
+ * destination for the xor and rotate. The difference between each run is that
+ * the words in the last two vectors are swapped.
+ *
+ * So in the first round the vectors are:
+ *   (0, 2), (4, 6), (1, 3), (5, 7)
+ * second:
+ *   (0, 2), (4, 6), (3, 1), (7, 5)
+ * third:
+ *   (0, 2), (4, 6), (5, 7), (1, 3)
+ * fourth:
+ *   (0, 2), (4, 6), (7, 5), (3, 1)
+ * key injection (which needs to be adjusted for the different order in memory):
+ *   (0, 2), (4, 6), (1, 3), (5, 7)
+ * 
+ * This shows that after each step, we permute the values in the last two vectors
+ * and then run the exact same code again.
+ *
+ * Speed
+ * =====
+ *
+ * In performance tests on a PowerBook G4 1.6 GHz, the code (optimized for
+ * the G4) this code achieves a hash performance of about 35 MByte/s, or
+ * about 45 cycles/byte. This is more than 10 times faster than the simple
+ * non-optimized code that GCC creates. However, my guess is that optimized
+ * assembler for powerpc, that does not use the altivec unit, will be much
+ * faster than this, and the altivec code will probably not outperform it by
+ * too much. (Though I do expect that it will be a bit faster.)
+ */
+
+
 #include <string.h>
 #include "skein.h"
 
