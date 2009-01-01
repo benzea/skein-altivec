@@ -163,42 +163,6 @@ uint_t Skein_256_Unroll_Cnt(void)
 
 #include <altivec.h>
 
-void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
-			     size_t blkCnt, size_t byteCntAdd)
-{				/* do it in C with altivec! */
-	size_t i, r;
-	union {
-		vector unsigned int v;
-		u64b_t i[3];
-	} ts;
-	u64b_t ks[9];
-	union {
-		vector unsigned int v[4];
-		u64b_t i[8];
-	} KeyInject_add;
-
-	/* The Xi is only used for storing the data. */
-	u64b_t Xi[8] __attribute__((aligned(16)));
-	vector unsigned int Xv0;
-	vector unsigned int Xv1;
-	vector unsigned int Xv2;
-	vector unsigned int Xv3;
-
-	vector unsigned int w[4];
-
-	/* special vectors for the altivec calculations */
-	vector unsigned char carry_mov = {0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0};
-	vector unsigned char perm_load_a = {0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};
-	vector unsigned char perm_load_b = {8, 9, 10, 11, 12, 13, 14, 15, 8, 9, 10, 11, 12, 13, 14, 15};
-	vector unsigned char perm_load_upper = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17};
-	vector unsigned char perm_load_lower = {0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
-
-	vector unsigned char perm_swap_u64 = {8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7};
-	vector char perm_load_swap_endian = {7, 5, 3, 1, -1, -3, -5, -7, 7, 5, 3, 1, -1, -3, -5, -7,};
-	vector unsigned int tmp_vec0, tmp_vec1, tmp_vec2, tmp_vec3;
-	unsigned int dst_control_word = 0x40020040;
-
-
 #define vec_add64(a, b) ({ \
 	vector unsigned int __result;					\
 	vector unsigned int __carry;					\
@@ -210,20 +174,24 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 	__result;})
 
 
-#define InjectKey_altivec(r)                                           \
-    KeyInject_add.i[0] = ks[((r)+0) % (8+1)];                          \
-    KeyInject_add.i[4] = ks[((r)+1) % (8+1)];                          \
-    KeyInject_add.i[1] = ks[((r)+2) % (8+1)];                          \
-    KeyInject_add.i[5] = ks[((r)+3) % (8+1)];                          \
-    KeyInject_add.i[2] = ks[((r)+4) % (8+1)];                          \
-    KeyInject_add.i[6] = ks[((r)+5) % (8+1)] + ts.i[((r)+0) % 3];      \
-    KeyInject_add.i[3] = ks[((r)+6) % (8+1)] + ts.i[((r)+1) % 3];      \
-    KeyInject_add.i[7] = ks[((r)+7) % (8+1)] + (r);                    \
-    \
-    Xv0 = vec_add64(Xv0, KeyInject_add.v[0]);  \
-    Xv1 = vec_add64(Xv1, KeyInject_add.v[1]);  \
-    Xv2 = vec_add64(Xv2, KeyInject_add.v[2]);  \
-    Xv3 = vec_add64(Xv3, KeyInject_add.v[3]);  \
+#define InjectKey_altivec(r)						\
+	KeyInject_add[0] = ks[((r)+0) % (8+1)];				\
+	KeyInject_add[4] = ks[((r)+1) % (8+1)];				\
+	KeyInject_add[1] = ks[((r)+2) % (8+1)];				\
+	KeyInject_add[5] = ks[((r)+3) % (8+1)];				\
+	KeyInject_add[2] = ks[((r)+4) % (8+1)];				\
+	KeyInject_add[6] = ks[((r)+5) % (8+1)] + ts[((r)+0) % 3];	\
+	KeyInject_add[3] = ks[((r)+6) % (8+1)] + ts[((r)+1) % 3];	\
+	KeyInject_add[7] = ks[((r)+7) % (8+1)] + (r);			\
+									\
+	tmp_vec0 = vec_ld(0x00, (unsigned int*) KeyInject_add);		\
+	tmp_vec1 = vec_ld(0x10, (unsigned int*) KeyInject_add);		\
+	tmp_vec2 = vec_ld(0x20, (unsigned int*) KeyInject_add);		\
+	tmp_vec3 = vec_ld(0x30, (unsigned int*) KeyInject_add);		\
+	X0 = vec_add64(X0, tmp_vec0);					\
+	X1 = vec_add64(X1, tmp_vec1);					\
+	X2 = vec_add64(X2, tmp_vec2);					\
+	X3 = vec_add64(X3, tmp_vec3);					\
 
 #define vec_rotl64(input, rot_a, rot_b)					\
 {									\
@@ -254,24 +222,57 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 }
 
 #define Skein_Get64_512_Altivec(addr)					\
-	{								\
 		vector unsigned char __load_vec;			\
 									\
 		tmp_vec0 = vec_ld(0, (unsigned int*) (addr));		\
-		w[0] = vec_ld(0x10, (unsigned int*) (addr));		\
-		w[1] = vec_ld(0x20, (unsigned int*) (addr));		\
-		w[2] = vec_ld(0x30, (unsigned int*) (addr));		\
-		w[3] = vec_ld(0x3f, (unsigned int*) (addr));		\
+		w0 = vec_ld(0x10, (unsigned int*) (addr));		\
+		w1 = vec_ld(0x20, (unsigned int*) (addr));		\
+		w2 = vec_ld(0x30, (unsigned int*) (addr));		\
+		w3 = vec_ld(0x3f, (unsigned int*) (addr));		\
 									\
 		__load_vec = vec_lvsl(0, (addr));			\
 		__load_vec = vec_add(__load_vec, perm_load_swap_endian); \
 									\
-		w[3] = vec_perm(w[2], w[3], __load_vec);		\
-		w[2] = vec_perm(w[1], w[2], __load_vec);		\
-		w[1] = vec_perm(w[0], w[1], __load_vec);		\
-		w[0] = vec_perm(tmp_vec0, w[0], __load_vec);		\
-		\
-	}								\
+		w3 = vec_perm(w2, w3, __load_vec);			\
+		w2 = vec_perm(w1, w2, __load_vec);			\
+		w1 = vec_perm(w0, w1, __load_vec);			\
+		w0 = vec_perm(tmp_vec0, w0, __load_vec);		\
+									\
+		/* ALTIVEC ORDER */					\
+		tmp_vec0 = w0;						\
+		w0 = vec_perm(w0, w1, perm_load_upper);			\
+		tmp_vec1 = w1;						\
+		w1 = vec_perm(w2, w3, perm_load_upper);			\
+		tmp_vec2 = w2;						\
+		w2 = vec_perm(tmp_vec0, tmp_vec1, perm_load_lower);	\
+		w3 = vec_perm(tmp_vec2, w3, perm_load_lower);
+
+
+void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
+			     size_t blkCnt, size_t byteCntAdd)
+{	/* do it in C with altivec! */
+	size_t i, r;
+	u64b_t ks[9];
+	u64b_t ts[3] __attribute__((aligned(16)));
+	u64b_t KeyInject_add[8] __attribute__((aligned(16)));
+
+	/* The Xi is only used for storing the data. */
+	u64b_t Xi[8] __attribute__((aligned(16)));
+
+	vector unsigned int X0, X1, X2, X3;
+	vector unsigned int w0, w1, w2, w3;
+
+	/* special vectors for the altivec calculations */
+	vector unsigned char carry_mov = {0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0};
+	vector unsigned char perm_load_a = {0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};
+	vector unsigned char perm_load_b = {8, 9, 10, 11, 12, 13, 14, 15, 8, 9, 10, 11, 12, 13, 14, 15};
+	vector unsigned char perm_load_upper = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17};
+	vector unsigned char perm_load_lower = {0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
+	vector unsigned char perm_swap_u64 = {8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7};
+	vector char perm_load_swap_endian = {7, 5, 3, 1, -1, -3, -5, -7, 7, 5, 3, 1, -1, -3, -5, -7,};
+
+	vector unsigned int tmp_vec0, tmp_vec1, tmp_vec2, tmp_vec3;
+	unsigned int dst_control_word = 0x40020040; /* Preload two blocks of 64 bytes each. */
 
 	Skein_assert(blkCnt != 0);	/* never call with blkCnt == 0! */
 
@@ -284,19 +285,19 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 	Xi[6] = ctx->X[6];
 	Xi[7] = ctx->X[7];
 
-	Xv0 = vec_ld(0, (unsigned int*) &Xi[0]);
-	Xv1 = vec_ld(0, (unsigned int*) &Xi[2]);
-	Xv2 = vec_ld(0, (unsigned int*) &Xi[4]);
-	Xv3 = vec_ld(0, (unsigned int*) &Xi[6]);
+	X0 = vec_ld(0x00, (unsigned int*) Xi);
+	X1 = vec_ld(0x10, (unsigned int*) Xi);
+	X2 = vec_ld(0x20, (unsigned int*) Xi);
+	X3 = vec_ld(0x30, (unsigned int*) Xi);
 
 	/* ALTIVEC ORDER */
-	tmp_vec0 = Xv0;
-	Xv0 = vec_perm(Xv0, Xv1, perm_load_upper);
-	tmp_vec1 = Xv1;
-	Xv1 = vec_perm(Xv2, Xv3, perm_load_upper);
-	tmp_vec2 = Xv2;
-	Xv2 = vec_perm(tmp_vec0, tmp_vec1, perm_load_lower);
-	Xv3 = vec_perm(tmp_vec2, Xv3, perm_load_lower);
+	tmp_vec0 = X0;
+	X0 = vec_perm(X0, X1, perm_load_upper);
+	tmp_vec1 = X1;
+	X1 = vec_perm(X2, X3, perm_load_upper);
+	tmp_vec2 = X2;
+	X2 = vec_perm(tmp_vec0, tmp_vec1, perm_load_lower);
+	X3 = vec_perm(tmp_vec2, X3, perm_load_lower);
 
 	do {
 		u64b_t tmp;
@@ -307,184 +308,174 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 		ctx->h.T[0] += byteCntAdd;	/* update processed length */
 
 		/* Store ks in normal order. */
-		tmp_vec0 = vec_perm(Xv0, Xv2, perm_load_upper);
-		tmp_vec1 = vec_perm(Xv0, Xv2, perm_load_lower);
-		tmp_vec2 = vec_perm(Xv1, Xv3, perm_load_upper);
-		tmp_vec3 = vec_perm(Xv1, Xv3, perm_load_lower);
-		vec_st(tmp_vec0, 0, (unsigned int*) &ks[0]);
-		vec_st(tmp_vec1, 0, (unsigned int*) &ks[2]);
-		vec_st(tmp_vec2, 0, (unsigned int*) &ks[4]);
-		vec_st(tmp_vec3, 0, (unsigned int*) &ks[6]);
+		tmp_vec0 = vec_perm(X0, X2, perm_load_upper);
+		tmp_vec1 = vec_perm(X0, X2, perm_load_lower);
+		tmp_vec2 = vec_perm(X1, X3, perm_load_upper);
+		tmp_vec3 = vec_perm(X1, X3, perm_load_lower);
 
 		ks[8] = SKEIN_KS_PARITY;
+		vec_st(tmp_vec0, 0x00, (unsigned int*) ks);
 		ks[8] ^= ks[0];
 		ks[8] ^= ks[1];	
+		vec_st(tmp_vec1, 0x10, (unsigned int*) ks);
 		ks[8] ^= ks[2];
 		ks[8] ^= ks[3];
+		vec_st(tmp_vec2, 0x20, (unsigned int*) ks);
 		ks[8] ^= ks[4];
 		ks[8] ^= ks[5];
+		vec_st(tmp_vec3, 0x30, (unsigned int*) ks);
 		ks[8] ^= ks[6];
 		ks[8] ^= ks[7];
 
-		ts.i[0] = ctx->h.T[0];
-		ts.i[1] = ctx->h.T[1];
-		ts.i[2] = ts.i[0] ^ ts.i[1];
+		ts[0] = ctx->h.T[0];
+		ts[1] = ctx->h.T[1];
+		ts[2] = ts[0] ^ ts[1];
 		Skein_Get64_512_Altivec(blkPtr); /* load input block into w[] registers */
 
-		tmp_vec0 = vec_sld(Xv1, Xv3, 8);
-		tmp_vec1 = vec_sld(ts.v, ts.v, 8);
+		tmp_vec2 = vec_ld(0, (unsigned int*)ts);
+		tmp_vec0 = vec_sld(X1, X3, 8);
+		tmp_vec1 = vec_sld(tmp_vec2, tmp_vec2, 8);
 		tmp_vec0 = vec_add64(tmp_vec0, tmp_vec1);
 		
-		Xv1 = vec_perm(Xv1, tmp_vec0, perm_load_upper);
-		Xv3 = vec_perm(tmp_vec0, Xv3, perm_load_lower);
-		
+		X1 = vec_perm(X1, tmp_vec0, perm_load_upper);
+		X3 = vec_perm(tmp_vec0, X3, perm_load_lower);
 
-		/* ALTIVEC ORDER */
-		tmp_vec0 = w[0];
-		w[0] = vec_perm(w[0], w[1], perm_load_upper);
-		tmp_vec1 = w[1];
-		w[1] = vec_perm(w[2], w[3], perm_load_upper);
-		tmp_vec2 = w[2];
-		w[2] = vec_perm(tmp_vec0, tmp_vec1, perm_load_lower);
-		w[3] = vec_perm(tmp_vec2, w[3], perm_load_lower);
-
-
-		Xv0 = vec_add64(Xv0, w[0]);
-		Xv1 = vec_add64(Xv1, w[1]);
-		Xv2 = vec_add64(Xv2, w[2]);
-		Xv3 = vec_add64(Xv3, w[3]);
+		X0 = vec_add64(X0, w0);
+		X1 = vec_add64(X1, w1);
+		X2 = vec_add64(X2, w2);
+		X3 = vec_add64(X3, w3);
 
 		for (r = 1; r <= SKEIN_512_ROUNDS_TOTAL / 8; r++) {	/* unroll 8 rounds */
 			/* START_MY_BLOCK */
 			/* 0,1 2,3 4,5 6,7*/
-			Xv0 = vec_add64(Xv0, Xv2);
-			Xv1 = vec_add64(Xv1, Xv3);
-			vec_rotl64(Xv2, R_512_0_0, R_512_0_1);
-			vec_rotl64(Xv3, R_512_0_2, R_512_0_3);
-			Xv2 = vec_xor(Xv2, Xv0);
-			Xv3 = vec_xor(Xv3, Xv1);
+			X0 = vec_add64(X0, X2);
+			X1 = vec_add64(X1, X3);
+			vec_rotl64(X2, R_512_0_0, R_512_0_1);
+			vec_rotl64(X3, R_512_0_2, R_512_0_3);
+			X2 = vec_xor(X2, X0);
+			X3 = vec_xor(X3, X1);
 			/* END_MY_BLOCK */
 
-			Xv2 = vec_perm(Xv2, Xv2, perm_swap_u64);
-			Xv3 = vec_perm(Xv3, Xv3, perm_swap_u64);
+			X2 = vec_perm(X2, X2, perm_swap_u64);
+			X3 = vec_perm(X3, X3, perm_swap_u64);
 
 			/* START_MY_BLOCK */
-			Xv0 = vec_add64(Xv0, Xv2);
-			Xv1 = vec_add64(Xv1, Xv3);
-			vec_rotl64(Xv2, R_512_1_3, R_512_1_0);
-			vec_rotl64(Xv3, R_512_1_1, R_512_1_2);
-			Xv2 = vec_xor(Xv2, Xv0);
-			Xv3 = vec_xor(Xv3, Xv1);
+			X0 = vec_add64(X0, X2);
+			X1 = vec_add64(X1, X3);
+			vec_rotl64(X2, R_512_1_3, R_512_1_0);
+			vec_rotl64(X3, R_512_1_1, R_512_1_2);
+			X2 = vec_xor(X2, X0);
+			X3 = vec_xor(X3, X1);
 			/* END_MY_BLOCK */
 
-			tmp_vec0 = Xv2;
-			Xv2 = vec_perm(Xv3, Xv3, perm_swap_u64);
-			Xv3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
+			tmp_vec0 = X2;
+			X2 = vec_perm(X3, X3, perm_swap_u64);
+			X3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
 
 			/* START_MY_BLOCK */
-			Xv0 = vec_add64(Xv0, Xv2);
-			Xv1 = vec_add64(Xv1, Xv3);
-			vec_rotl64(Xv2, R_512_2_2, R_512_2_3);
-			vec_rotl64(Xv3, R_512_2_0, R_512_2_1);
-			Xv2 = vec_xor(Xv2, Xv0);
-			Xv3 = vec_xor(Xv3, Xv1);
+			X0 = vec_add64(X0, X2);
+			X1 = vec_add64(X1, X3);
+			vec_rotl64(X2, R_512_2_2, R_512_2_3);
+			vec_rotl64(X3, R_512_2_0, R_512_2_1);
+			X2 = vec_xor(X2, X0);
+			X3 = vec_xor(X3, X1);
 			/* END_MY_BLOCK */
 
-			Xv2 = vec_perm(Xv2, Xv2, perm_swap_u64);
-			Xv3 = vec_perm(Xv3, Xv3, perm_swap_u64);
+			X2 = vec_perm(X2, X2, perm_swap_u64);
+			X3 = vec_perm(X3, X3, perm_swap_u64);
 
 			/* START_MY_BLOCK */
-			Xv0 = vec_add64(Xv0, Xv2);
-			Xv1 = vec_add64(Xv1, Xv3);
-			vec_rotl64(Xv2, R_512_3_1, R_512_3_2);
-			vec_rotl64(Xv3, R_512_3_3, R_512_3_0);
-			Xv2 = vec_xor(Xv2, Xv0);
-			Xv3 = vec_xor(Xv3, Xv1);
+			X0 = vec_add64(X0, X2);
+			X1 = vec_add64(X1, X3);
+			vec_rotl64(X2, R_512_3_1, R_512_3_2);
+			vec_rotl64(X3, R_512_3_3, R_512_3_0);
+			X2 = vec_xor(X2, X0);
+			X3 = vec_xor(X3, X1);
 			/* END_MY_BLOCK */
 
-			tmp_vec0 = Xv2;
-			Xv2 = vec_perm(Xv3, Xv3, perm_swap_u64);
-			Xv3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
+			tmp_vec0 = X2;
+			X2 = vec_perm(X3, X3, perm_swap_u64);
+			X3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
 
 			InjectKey_altivec(2 * r - 1);
 
 			/* START_MY_BLOCK */
 			/* 0,1 2,3 4,5 6,7*/
-			Xv0 = vec_add64(Xv0, Xv2);
-			Xv1 = vec_add64(Xv1, Xv3);
-			vec_rotl64(Xv2, R_512_4_0, R_512_4_1);
-			vec_rotl64(Xv3, R_512_4_2, R_512_4_3);
-			Xv2 = vec_xor(Xv2, Xv0);
-			Xv3 = vec_xor(Xv3, Xv1);
+			X0 = vec_add64(X0, X2);
+			X1 = vec_add64(X1, X3);
+			vec_rotl64(X2, R_512_4_0, R_512_4_1);
+			vec_rotl64(X3, R_512_4_2, R_512_4_3);
+			X2 = vec_xor(X2, X0);
+			X3 = vec_xor(X3, X1);
 			/* END_MY_BLOCK */
 
-			Xv2 = vec_perm(Xv2, Xv2, perm_swap_u64);
-			Xv3 = vec_perm(Xv3, Xv3, perm_swap_u64);
+			X2 = vec_perm(X2, X2, perm_swap_u64);
+			X3 = vec_perm(X3, X3, perm_swap_u64);
 
 			/* START_MY_BLOCK */
-			Xv0 = vec_add64(Xv0, Xv2);
-			Xv1 = vec_add64(Xv1, Xv3);
-			vec_rotl64(Xv2, R_512_5_3, R_512_5_0);
-			vec_rotl64(Xv3, R_512_5_1, R_512_5_2);
-			Xv2 = vec_xor(Xv2, Xv0);
-			Xv3 = vec_xor(Xv3, Xv1);
+			X0 = vec_add64(X0, X2);
+			X1 = vec_add64(X1, X3);
+			vec_rotl64(X2, R_512_5_3, R_512_5_0);
+			vec_rotl64(X3, R_512_5_1, R_512_5_2);
+			X2 = vec_xor(X2, X0);
+			X3 = vec_xor(X3, X1);
 			/* END_MY_BLOCK */
 
-			tmp_vec0 = Xv2;
-			Xv2 = vec_perm(Xv3, Xv3, perm_swap_u64);
-			Xv3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
+			tmp_vec0 = X2;
+			X2 = vec_perm(X3, X3, perm_swap_u64);
+			X3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
 
 			/* START_MY_BLOCK */
-			Xv0 = vec_add64(Xv0, Xv2);
-			Xv1 = vec_add64(Xv1, Xv3);
-			vec_rotl64(Xv2, R_512_6_2, R_512_6_3);
-			vec_rotl64(Xv3, R_512_6_0, R_512_6_1);
-			Xv2 = vec_xor(Xv2, Xv0);
-			Xv3 = vec_xor(Xv3, Xv1);
+			X0 = vec_add64(X0, X2);
+			X1 = vec_add64(X1, X3);
+			vec_rotl64(X2, R_512_6_2, R_512_6_3);
+			vec_rotl64(X3, R_512_6_0, R_512_6_1);
+			X2 = vec_xor(X2, X0);
+			X3 = vec_xor(X3, X1);
 			/* END_MY_BLOCK */
 
-			Xv2 = vec_perm(Xv2, Xv2, perm_swap_u64);
-			Xv3 = vec_perm(Xv3, Xv3, perm_swap_u64);
+			X2 = vec_perm(X2, X2, perm_swap_u64);
+			X3 = vec_perm(X3, X3, perm_swap_u64);
 
 			/* START_MY_BLOCK */
-			Xv0 = vec_add64(Xv0, Xv2);
-			Xv1 = vec_add64(Xv1, Xv3);
-			vec_rotl64(Xv2, R_512_7_1, R_512_7_2);
-			vec_rotl64(Xv3, R_512_7_3, R_512_7_0);
-			Xv2 = vec_xor(Xv2, Xv0);
-			Xv3 = vec_xor(Xv3, Xv1);
+			X0 = vec_add64(X0, X2);
+			X1 = vec_add64(X1, X3);
+			vec_rotl64(X2, R_512_7_1, R_512_7_2);
+			vec_rotl64(X3, R_512_7_3, R_512_7_0);
+			X2 = vec_xor(X2, X0);
+			X3 = vec_xor(X3, X1);
 			/* END_MY_BLOCK */
 
-			tmp_vec0 = Xv2;
-			Xv2 = vec_perm(Xv3, Xv3, perm_swap_u64);
-			Xv3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
+			tmp_vec0 = X2;
+			X2 = vec_perm(X3, X3, perm_swap_u64);
+			X3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
 
 			InjectKey_altivec(2 * r);
 
 		}
 
 		/* do the final "feedforward" xor, update context chaining vars */
-		Xv0 = vec_xor(Xv0, w[0]);
-		Xv1 = vec_xor(Xv1, w[1]);
-		Xv2 = vec_xor(Xv2, w[2]);
-		Xv3 = vec_xor(Xv3, w[3]);
+		X0 = vec_xor(X0, w0);
+		X1 = vec_xor(X1, w1);
+		X2 = vec_xor(X2, w2);
+		X3 = vec_xor(X3, w3);
 
 		Skein_Clear_First_Flag(ctx->h);	/* clear the start bit */
 		blkPtr += SKEIN_512_BLOCK_BYTES;
 	} while (--blkCnt);
 
 	/* UNDO ALTIVEC ORDER */
-	tmp_vec0 = Xv0;
-	Xv0 = vec_perm(Xv0, Xv2, perm_load_upper);
-	tmp_vec1 = Xv1;
-	Xv1 = vec_perm(tmp_vec0, Xv2, perm_load_lower);
-	Xv2 = vec_perm(tmp_vec1, Xv3, perm_load_upper);
-	Xv3 = vec_perm(tmp_vec1, Xv3, perm_load_lower);
+	tmp_vec0 = X0;
+	X0 = vec_perm(X0, X2, perm_load_upper);
+	tmp_vec1 = X1;
+	X1 = vec_perm(tmp_vec0, X2, perm_load_lower);
+	X2 = vec_perm(tmp_vec1, X3, perm_load_upper);
+	X3 = vec_perm(tmp_vec1, X3, perm_load_lower);
 
-	vec_st(Xv0, 0, (unsigned int*) &Xi[0]);
-	vec_st(Xv1, 0, (unsigned int*) &Xi[2]);
-	vec_st(Xv2, 0, (unsigned int*) &Xi[4]);
-	vec_st(Xv3, 0, (unsigned int*) &Xi[6]);
+	vec_st(X0, 0x00, (unsigned int*) Xi);
+	vec_st(X1, 0x10, (unsigned int*) Xi);
+	vec_st(X2, 0x20, (unsigned int*) Xi);
+	vec_st(X3, 0x30, (unsigned int*) Xi);
 
 	vec_dss(0);
 
