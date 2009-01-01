@@ -165,7 +165,7 @@
 void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 			     size_t blkCnt, size_t byteCntAdd)
 {	/* do it in C with altivec! */
-	size_t i, r;
+	size_t r;
 	u64b_t ks[5];
 	u64b_t ts[3] __attribute__((aligned(16)));
 	u64b_t KeyInject_add[4] __attribute__((aligned(16)));
@@ -211,8 +211,6 @@ void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 
 	Skein_assert(blkCnt != 0);	/* never call with blkCnt == 0! */
 	do {
-		u64b_t tmp;
-
 		vec_dst(blkPtr, dst_control_word, 0);
 
 		/* this implementation only supports 2**64 input bytes (no carry out here) */
@@ -398,7 +396,7 @@ uint_t Skein_256_Unroll_Cnt(void)
 void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 			     size_t blkCnt, size_t byteCntAdd)
 {	/* do it in C with altivec! */
-	size_t i, r;
+	size_t r;
 	u64b_t ks[9];
 	u64b_t ts[3] __attribute__((aligned(16)));
 	u64b_t KeyInject_add[8] __attribute__((aligned(16)));
@@ -452,8 +450,6 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 	X3 = vec_perm(tmp_vec2, X3, perm_load_lower);
 
 	do {
-		u64b_t tmp;
-
 		vec_dst(blkPtr, dst_control_word, 0);
 
 		/* this implementation only supports 2**64 input bytes (no carry out here) */
@@ -714,11 +710,7 @@ uint_t Skein_512_Unroll_Cnt(void)
 void Skein1024_Process_Block(Skein1024_Ctxt_t * ctx, const u08b_t * blkPtr,
 			     size_t blkCnt, size_t byteCntAdd)
 {	/* do it in C with altivec! */
-	enum {
-		WCNT = SKEIN1024_STATE_WORDS
-	};
-
-	size_t i, r;
+	size_t r;
 	u64b_t ks[17];
 	u64b_t ts[3] __attribute__((aligned(16)));
 	u64b_t KeyInject_add[16] __attribute__((aligned(16)));
@@ -781,8 +773,6 @@ void Skein1024_Process_Block(Skein1024_Ctxt_t * ctx, const u08b_t * blkPtr,
 
 	Skein_assert(blkCnt != 0);	/* never call with blkCnt == 0! */
 	do {
-		u64b_t tmp;
-
 		vec_dst(blkPtr, dst_control_word, 0);
 
 		/* this implementation only supports 2**64 input bytes (no carry out here) */
