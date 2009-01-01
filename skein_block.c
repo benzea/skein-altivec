@@ -3,14 +3,9 @@
 ** Implementation of the Skein block functions.
 **
 ** Source code author: Doug Whiting, 2008.
+** Altivec Optimization: Benjamin Berg, 2008.
 **
 ** This algorithm and source code is released to the public domain.
-**
-** Compile-time switches:
-**
-**  SKEIN_USE_ASM             -- set bits (256/512/1024) to select which
-**                               versions use ASM code for block processing
-**                               [default: use C for all block sizes]
 **
 ************************************************************************/
 
@@ -345,53 +340,44 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 		X2 = vec_add64(X2, w2);
 		X3 = vec_add64(X3, w3);
 
-		for (r = 1; r <= SKEIN_512_ROUNDS_TOTAL / 8; r++) {	/* unroll 8 rounds */
-			/* START_MY_BLOCK */
-			/* 0,1 2,3 4,5 6,7*/
+		for (r = 1; r <= SKEIN_512_ROUNDS_TOTAL / 8; r++) { /* unroll 8 rounds */
 			X0 = vec_add64(X0, X2);
 			X1 = vec_add64(X1, X3);
 			vec_rotl64(X2, R_512_0_0, R_512_0_1);
 			vec_rotl64(X3, R_512_0_2, R_512_0_3);
 			X2 = vec_xor(X2, X0);
 			X3 = vec_xor(X3, X1);
-			/* END_MY_BLOCK */
 
 			X2 = vec_perm(X2, X2, perm_swap_u64);
 			X3 = vec_perm(X3, X3, perm_swap_u64);
 
-			/* START_MY_BLOCK */
 			X0 = vec_add64(X0, X2);
 			X1 = vec_add64(X1, X3);
 			vec_rotl64(X2, R_512_1_3, R_512_1_0);
 			vec_rotl64(X3, R_512_1_1, R_512_1_2);
 			X2 = vec_xor(X2, X0);
 			X3 = vec_xor(X3, X1);
-			/* END_MY_BLOCK */
 
 			tmp_vec0 = X2;
 			X2 = vec_perm(X3, X3, perm_swap_u64);
 			X3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
 
-			/* START_MY_BLOCK */
 			X0 = vec_add64(X0, X2);
 			X1 = vec_add64(X1, X3);
 			vec_rotl64(X2, R_512_2_2, R_512_2_3);
 			vec_rotl64(X3, R_512_2_0, R_512_2_1);
 			X2 = vec_xor(X2, X0);
 			X3 = vec_xor(X3, X1);
-			/* END_MY_BLOCK */
 
 			X2 = vec_perm(X2, X2, perm_swap_u64);
 			X3 = vec_perm(X3, X3, perm_swap_u64);
 
-			/* START_MY_BLOCK */
 			X0 = vec_add64(X0, X2);
 			X1 = vec_add64(X1, X3);
 			vec_rotl64(X2, R_512_3_1, R_512_3_2);
 			vec_rotl64(X3, R_512_3_3, R_512_3_0);
 			X2 = vec_xor(X2, X0);
 			X3 = vec_xor(X3, X1);
-			/* END_MY_BLOCK */
 
 			tmp_vec0 = X2;
 			X2 = vec_perm(X3, X3, perm_swap_u64);
@@ -399,59 +385,49 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 
 			InjectKey_altivec(2 * r - 1);
 
-			/* START_MY_BLOCK */
-			/* 0,1 2,3 4,5 6,7*/
 			X0 = vec_add64(X0, X2);
 			X1 = vec_add64(X1, X3);
 			vec_rotl64(X2, R_512_4_0, R_512_4_1);
 			vec_rotl64(X3, R_512_4_2, R_512_4_3);
 			X2 = vec_xor(X2, X0);
 			X3 = vec_xor(X3, X1);
-			/* END_MY_BLOCK */
 
 			X2 = vec_perm(X2, X2, perm_swap_u64);
 			X3 = vec_perm(X3, X3, perm_swap_u64);
 
-			/* START_MY_BLOCK */
 			X0 = vec_add64(X0, X2);
 			X1 = vec_add64(X1, X3);
 			vec_rotl64(X2, R_512_5_3, R_512_5_0);
 			vec_rotl64(X3, R_512_5_1, R_512_5_2);
 			X2 = vec_xor(X2, X0);
 			X3 = vec_xor(X3, X1);
-			/* END_MY_BLOCK */
 
 			tmp_vec0 = X2;
 			X2 = vec_perm(X3, X3, perm_swap_u64);
 			X3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
 
-			/* START_MY_BLOCK */
 			X0 = vec_add64(X0, X2);
 			X1 = vec_add64(X1, X3);
 			vec_rotl64(X2, R_512_6_2, R_512_6_3);
 			vec_rotl64(X3, R_512_6_0, R_512_6_1);
 			X2 = vec_xor(X2, X0);
 			X3 = vec_xor(X3, X1);
-			/* END_MY_BLOCK */
 
 			X2 = vec_perm(X2, X2, perm_swap_u64);
 			X3 = vec_perm(X3, X3, perm_swap_u64);
 
-			/* START_MY_BLOCK */
 			X0 = vec_add64(X0, X2);
 			X1 = vec_add64(X1, X3);
 			vec_rotl64(X2, R_512_7_1, R_512_7_2);
 			vec_rotl64(X3, R_512_7_3, R_512_7_0);
 			X2 = vec_xor(X2, X0);
 			X3 = vec_xor(X3, X1);
-			/* END_MY_BLOCK */
 
 			tmp_vec0 = X2;
 			X2 = vec_perm(X3, X3, perm_swap_u64);
 			X3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
 
 			InjectKey_altivec(2 * r);
-
 		}
 
 		/* do the final "feedforward" xor, update context chaining vars */
