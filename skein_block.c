@@ -396,8 +396,6 @@ uint_t Skein_256_Unroll_Cnt(void)
 	X3 = vec_add64(X3, tmp_vec3);					\
 
 #define Skein_Get64_512_altivec(addr)				\
-	vector unsigned char __load_vec;			\
-								\
 	tmp_vec0 = vec_ld(0, (unsigned int*) (addr));		\
 	w0 = vec_ld(0x10, (unsigned int*) (addr));		\
 	w1 = vec_ld(0x20, (unsigned int*) (addr));		\
