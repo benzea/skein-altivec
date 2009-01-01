@@ -49,9 +49,9 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	
-	memset(hash, 0, 512/8);
+	memset(hash, 0, sizeof(hash));
 	
-	Init(&state, 512);
+	Init(&state, sizeof(hash)*8);
 	if (strcmp(argv[1], "-")) {
         	f = fopen(argv[1], "r");
 		if (f == NULL) {
@@ -69,7 +69,7 @@ int main(int argc, char **argv)
 	Final(&state, hash);
 	getrusage(RUSAGE_SELF, &end);
 	
-	for (i = 0; i < 512 / 8; i++)
+	for (i = 0; i < sizeof(hash); i++)
 		printf("%0.2X", hash[i]);
 	timeval_subtract(&start.ru_utime, &end.ru_utime, &start.ru_utime);
 	printf("\n");
