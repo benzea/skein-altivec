@@ -3,7 +3,7 @@
 ** Implementation of the Skein block functions.
 **
 ** Source code author: Doug Whiting, 2008.
-** Altivec Optimization: Benjamin Berg, 2008.
+** Altivec Optimization: Benjamin Berg, 2008, 2009.
 **
 ** This algorithm and source code is released to the public domain.
 **
