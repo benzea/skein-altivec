@@ -74,6 +74,57 @@
 #include <string.h>
 #include "skein.h"
 
+
+#include <altivec.h>
+
+#define add64_vectors	vector unsigned char carry_mov = {0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0};
+
+#define vec_add64(a, b) ({ \
+	vector unsigned int __result;					\
+	vector unsigned int __carry;					\
+									\
+	__carry = vec_addc(a, b);					\
+	__carry = vec_perm(__carry, __carry, carry_mov);		\
+	__result = vec_add(a, b);					\
+	__result = vec_add(__carry, __result);				\
+	__result;})
+
+/* vec_rotl64 also needs perm_load_upper! */
+#define rotl64_vectors												\
+	vector unsigned char perm_load_a = {0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};			\
+	vector unsigned char perm_load_b = {8, 9, 10, 11, 12, 13, 14, 15, 8, 9, 10, 11, 12, 13, 14, 15};
+
+#define vec_rotl64(input, rot_a, rot_b)					\
+{									\
+	vector unsigned char _tmp1, _tmp2;				\
+	vector unsigned int _a, _b;					\
+									\
+	_a = vec_perm(input, input, perm_load_a);			\
+	_b = vec_perm(input, input, perm_load_b);			\
+									\
+	if ((rot_a) >> 3 != 0) {					\
+		_a = vec_sld(_a, _a, (rot_a) >> 3);			\
+	}								\
+	if ((rot_b) >> 3 != 0) {					\
+		_b = vec_sld(_b, _b, (rot_b) >> 3);			\
+	}								\
+									\
+	if ((rot_a) % 8 != 0) {						\
+		_tmp1 = vec_splat_u8((rot_a) % 8);			\
+		_a = vec_sll(_a, _tmp1);				\
+	}								\
+									\
+	if ((rot_b) % 8 != 0) {						\
+		_tmp2 = vec_splat_u8((rot_b) % 8);			\
+		_b = vec_sll(_b, _tmp2);				\
+	}								\
+									\
+	input = vec_perm(_a, _b, perm_load_upper);			\
+}
+
+
+
+
 /* 64-bit rotate left */
 u64b_t RotL_64(u64b_t x, uint_t N)
 {
@@ -90,6 +141,11 @@ u64b_t RotL_64(u64b_t x, uint_t N)
     X[WCNT-2] += ts[((r)+1) % 3];                                   \
     X[WCNT-1] += (r);                    /* avoid slide attacks */  \
     Skein_Show_Round(BLK_BITS,&ctx->h,SKEIN_RND_KEY_INJECT,X);
+
+
+
+
+
 
 void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 			     size_t blkCnt, size_t byteCntAdd)
@@ -218,20 +274,7 @@ uint_t Skein_256_Unroll_Cnt(void)
 }
 #endif
 
-#include <altivec.h>
-
-#define vec_add64(a, b) ({ \
-	vector unsigned int __result;					\
-	vector unsigned int __carry;					\
-									\
-	__carry = vec_addc(a, b);					\
-	__carry = vec_perm(__carry, __carry, carry_mov);		\
-	__result = vec_add(a, b);					\
-	__result = vec_add(__carry, __result);				\
-	__result;})
-
-
-#define InjectKey_altivec(r)						\
+#define InjectKey_512_altivec(r)					\
 	KeyInject_add[0] = ks[((r)+0) % (8+1)];				\
 	KeyInject_add[4] = ks[((r)+1) % (8+1)];				\
 	KeyInject_add[1] = ks[((r)+2) % (8+1)];				\
@@ -250,59 +293,31 @@ uint_t Skein_256_Unroll_Cnt(void)
 	X2 = vec_add64(X2, tmp_vec2);					\
 	X3 = vec_add64(X3, tmp_vec3);					\
 
-#define vec_rotl64(input, rot_a, rot_b)					\
-{									\
-	vector unsigned char _tmp1, _tmp2;				\
-	vector unsigned int _a, _b;					\
-									\
-	_a = vec_perm(input, input, perm_load_a);			\
-	_b = vec_perm(input, input, perm_load_b);			\
-									\
-	if ((rot_a) >> 3 != 0) {					\
-		_a = vec_sld(_a, _a, (rot_a) >> 3);			\
-	}								\
-	if ((rot_b) >> 3 != 0) {					\
-		_b = vec_sld(_b, _b, (rot_b) >> 3);			\
-	}								\
-									\
-	if ((rot_a) % 8 != 0) {						\
-		_tmp1 = vec_splat_u8((rot_a) % 8);			\
-		_a = vec_sll(_a, _tmp1);				\
-	}								\
-									\
-	if ((rot_b) % 8 != 0) {						\
-		_tmp2 = vec_splat_u8((rot_b) % 8);			\
-		_b = vec_sll(_b, _tmp2);				\
-	}								\
-									\
-	input = vec_perm(_a, _b, perm_load_upper);			\
-}
-
-#define Skein_Get64_512_Altivec(addr)					\
-		vector unsigned char __load_vec;			\
-									\
-		tmp_vec0 = vec_ld(0, (unsigned int*) (addr));		\
-		w0 = vec_ld(0x10, (unsigned int*) (addr));		\
-		w1 = vec_ld(0x20, (unsigned int*) (addr));		\
-		w2 = vec_ld(0x30, (unsigned int*) (addr));		\
-		w3 = vec_ld(0x3f, (unsigned int*) (addr));		\
-									\
-		__load_vec = vec_lvsl(0, (addr));			\
-		__load_vec = vec_add(__load_vec, perm_load_swap_endian); \
-									\
-		w3 = vec_perm(w2, w3, __load_vec);			\
-		w2 = vec_perm(w1, w2, __load_vec);			\
-		w1 = vec_perm(w0, w1, __load_vec);			\
-		w0 = vec_perm(tmp_vec0, w0, __load_vec);		\
-									\
-		/* ALTIVEC ORDER */					\
-		tmp_vec0 = w0;						\
-		w0 = vec_perm(w0, w1, perm_load_upper);			\
-		tmp_vec1 = w1;						\
-		w1 = vec_perm(w2, w3, perm_load_upper);			\
-		tmp_vec2 = w2;						\
-		w2 = vec_perm(tmp_vec0, tmp_vec1, perm_load_lower);	\
-		w3 = vec_perm(tmp_vec2, w3, perm_load_lower);
+#define Skein_Get64_512_Altivec(addr)				\
+	vector unsigned char __load_vec;			\
+								\
+	tmp_vec0 = vec_ld(0, (unsigned int*) (addr));		\
+	w0 = vec_ld(0x10, (unsigned int*) (addr));		\
+	w1 = vec_ld(0x20, (unsigned int*) (addr));		\
+	w2 = vec_ld(0x30, (unsigned int*) (addr));		\
+	w3 = vec_ld(0x3f, (unsigned int*) (addr));		\
+								\
+	__load_vec = vec_lvsl(0, (addr));			\
+	__load_vec = vec_add(__load_vec, perm_load_swap_endian); \
+								\
+	w3 = vec_perm(w2, w3, __load_vec);			\
+	w2 = vec_perm(w1, w2, __load_vec);			\
+	w1 = vec_perm(w0, w1, __load_vec);			\
+	w0 = vec_perm(tmp_vec0, w0, __load_vec);		\
+								\
+	/* ALTIVEC ORDER */					\
+	tmp_vec0 = w0;						\
+	w0 = vec_perm(w0, w1, perm_load_upper);			\
+	tmp_vec1 = w1;						\
+	w1 = vec_perm(w2, w3, perm_load_upper);			\
+	tmp_vec2 = w2;						\
+	w2 = vec_perm(tmp_vec0, tmp_vec1, perm_load_lower);	\
+	w3 = vec_perm(tmp_vec2, w3, perm_load_lower);
 
 
 void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
@@ -320,12 +335,13 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 	vector unsigned int w0, w1, w2, w3;
 
 	/* special vectors for the altivec calculations */
-	vector unsigned char carry_mov = {0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0};
-	vector unsigned char perm_load_a = {0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};
-	vector unsigned char perm_load_b = {8, 9, 10, 11, 12, 13, 14, 15, 8, 9, 10, 11, 12, 13, 14, 15};
+	rotl64_vectors
+	add64_vectors
 	vector unsigned char perm_load_upper = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17};
 	vector unsigned char perm_load_lower = {0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
 	vector unsigned char perm_swap_u64 = {8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7};
+	/* This vector can be added to a vector produced with vec_lvsl (load vector for shift left), so that
+	 * unaligned little endian data, can be aligned *and* byteswapped at the same time. */
 	vector char perm_load_swap_endian = {7, 5, 3, 1, -1, -3, -5, -7, 7, 5, 3, 1, -1, -3, -5, -7,};
 
 	vector unsigned int tmp_vec0, tmp_vec1, tmp_vec2, tmp_vec3;
@@ -445,7 +461,7 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 			X2 = vec_perm(X3, X3, perm_swap_u64);
 			X3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
 
-			InjectKey_altivec(2 * r - 1);
+			InjectKey_512_altivec(2 * r - 1);
 
 			X0 = vec_add64(X0, X2);
 			X1 = vec_add64(X1, X3);
@@ -489,7 +505,7 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 			X2 = vec_perm(X3, X3, perm_swap_u64);
 			X3 = vec_perm(tmp_vec0, tmp_vec0, perm_swap_u64);
 
-			InjectKey_altivec(2 * r);
+			InjectKey_512_altivec(2 * r);
 		}
 
 		/* do the final "feedforward" xor, update context chaining vars */
@@ -526,6 +542,9 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 	ctx->X[6] = Xi[6];
 	ctx->X[7] = Xi[7];
 }
+
+#undef InjectKey_512_altivec
+#undef Skein_Get64_512_Altivec
 
 #if defined(SKEIN_CODE_SIZE) || defined(SKEIN_PERF)
 size_t Skein_512_Process_Block_CodeSize(void)
