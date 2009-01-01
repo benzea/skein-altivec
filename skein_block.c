@@ -233,15 +233,6 @@ void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 		ts[1] = ctx->h.T[1];
 		ts[2] = ts[0] ^ ts[1];
 		Skein_Get64_256_altivec(blkPtr); /* load input block into w registers */
-/*	vec_st(w0, 0x00, (unsigned int*) Xi);
-	vec_st(w1, 0x10, (unsigned int*) Xi);
-		printf("input: %0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x\n", (unsigned int)(Xi[0] >> 32), (unsigned int)Xi[0], (unsigned int)(Xi[1] >> 32), (unsigned int)Xi[1], (unsigned int)(Xi[2] >> 32), (unsigned int)Xi[2], (unsigned int)(Xi[3] >> 32), (unsigned int)Xi[3]);
-
-	vec_st(X0, 0x00, (unsigned int*) Xi);
-	vec_st(X1, 0x10, (unsigned int*) Xi);
-		printf("ts: %0.8x%0.8x, %0.8x%0.8x\n", (unsigned int)(ts[0] >> 32), (unsigned int)ts[0], (unsigned int)(ts[1] >> 32), (unsigned int)ts[1]);
-		printf("%0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x\n", (unsigned int)(Xi[0] >> 32), (unsigned int)Xi[0], (unsigned int)(Xi[1] >> 32), (unsigned int)Xi[1], (unsigned int)(Xi[2] >> 32), (unsigned int)Xi[2], (unsigned int)(Xi[3] >> 32), (unsigned int)Xi[3]);
-*/
 
 		tmp_vec1 = vec_ld(0, (unsigned int*)ts);
 		tmp_vec1 = vec_sld(tmp_vec1, tmp_vec1, 8);
@@ -251,10 +242,6 @@ void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 		X0 = vec_perm(X0, tmp_vec0, perm_load_upper);
 		X1 = vec_perm(tmp_vec0, X1, perm_load_lower);
 
-/*	vec_st(X0, 0x00, (unsigned int*) Xi);
-	vec_st(X1, 0x10, (unsigned int*) Xi);
-		printf("%0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x, %0.8x%0.8x\n", (unsigned int)(Xi[0] >> 32), (unsigned int)Xi[0], (unsigned int)(Xi[1] >> 32), (unsigned int)Xi[1], (unsigned int)(Xi[2] >> 32), (unsigned int)Xi[2], (unsigned int)(Xi[3] >> 32), (unsigned int)Xi[3]);
-*/
 		X0 = vec_add64(X0, w0);
 		X1 = vec_add64(X1, w1);
 
@@ -285,7 +272,6 @@ void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 
 			InjectKey_256_altivec(2 * r - 1);
 
-			/* 0,1; 2,3*/
 			X0 = vec_add64(X0, X1);
 			vec_rotl64(X1, R_256_4_0, R_256_4_1);
 			X1 = vec_xor(X1, X0);
