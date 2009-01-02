@@ -11,13 +11,13 @@
 
 /* About the Altivec Optimization (512 bit case)
  * 
- * Altivec has 32 128bit registers, which can be used as 8, 16 or 32 bit
- * integers, or 32/64 bit floating point values. Altivec does not support
+ * Altivec has 32 128 bit registers, which can be used as 8, 16 or 32 bit
+ * integers, or 32 bit floating point values. Altivec does not support
  * 64bit operations natively, but we can still do two 64 bit calculations
  * at the same time with some tricks.
  *
- * The important part here is to note that the state has two different kinds of
- * words. There are eight 64bit values, but 4 (the even ones) are always
+ * The important part here is that the state has two different kinds of
+ * words. There are eight 64 bit values, but 4 (the even ones) are always
  * used as the target for the addition, and the other 4 (the odd ones) are the
  * target of the xor (and are shifted).
  * Now this does not lend to the way that altivec works, because an even and
@@ -39,7 +39,7 @@
  *  v0 = v0 ^ v2;
  *
  * If we now look at the different steps, we notice that the calculations always
- * looks the same. The words in the first two vectors are always the
+ * look the same. The words in the first two vectors are always the
  * destination of the addition, and the words of the last two vectors the
  * destination for the xor and rotate. The difference between each run is that
  * the words in the last two vectors are swapped.
@@ -55,8 +55,8 @@
  * key injection (which needs to be adjusted because of the different order):
  *   (0, 2), (4, 6), (1, 3), (5, 7)
  * 
- * This shows that after each step, we permute the values in the last two vectors
- * and then run the exact same code again.
+ * As one can see, it is only neccessary to permute the values in the last
+ * two vectors. After that the same code can be run again for the next round.
  *
  * Speed
  * =====
@@ -64,16 +64,11 @@
  * In performance tests on a PowerBook G4 1.6 GHz, the code (optimized for
  * the G4) achieves a hash performance of about 35 MByte/s, or about
  * 45 cycles/byte. This is more than 10 times faster than the simple
- * non-optimized code that GCC creates. However, my guess is that optimized
- * assembler for powerpc, that does not use the altivec unit, will not be much
- * slower than the altivec code.
- *   * 64 bit add in normal powerpc: 2 instructions
- *   * 64 bit rotate in normal powerpc: should be 8 instructions
- *                                      (GCC does *much* worst than this)
- *   * 64 bit xor: 2 instructions
+ * non-optimized code that GCC creates. However, optimized assembler
+ * should be much faster than what GCC creates by default.
  *
- *
- * The 256 and 1024 bit implementations are both slightly slower.
+ * The 256 and 1024 bit implementations are both slightly slower than the
+ * 512 bit implementation.
  */
 
 
