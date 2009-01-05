@@ -92,21 +92,23 @@
 	__result = vec_add(__carry, __result);				\
 	__result;})
 
-/* vec_rotl64 also needs perm_load_upper! */
-#define rotl64_vectors												\
-	vector unsigned char perm_load_a = {0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};			\
-	vector unsigned char perm_load_b = {8, 9, 10, 11, 12, 13, 14, 15, 8, 9, 10, 11, 12, 13, 14, 15};
-
 /* Two 64bit left rotations in a 128bit Vector. These two rotations are
  * independent of each other. The rotation needs to be a constant (as the
- * values are stored in immediates for the instructions).
+ * values are stored in immediates for the instructions). */
+
+/* vec_rotl64a - Implementation A
  *
  * This calculation needs 3-9 instructions (most of the time 9). All
  * instructions are in the VPERM unit except for the splat ones. (May differ
  * on some machines.) So this code should need 7, or less cycles (if interleaved
  * with other calculations and/or some of the instructions are not needed.
  **/
-#define vec_rotl64(input, rot_a, rot_b)					\
+#define rotl64a_vectors												\
+	vector unsigned char perm_load_a = {0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};                    \
+	vector unsigned char perm_load_b = {8, 9, 10, 11, 12, 13, 14, 15, 8, 9, 10, 11, 12, 13, 14, 15};
+
+
+#define vec_rotl64a(input, rot_a, rot_b)				\
 {									\
 	vector unsigned char _tmp1, _tmp2;				\
 	vector unsigned int _a, _b;					\
@@ -134,6 +136,38 @@
 	input = vec_perm(_a, _b, perm_load_upper);			\
 }
 
+/* vec_rotl64b - Implementation B
+ *
+ * This one needs more registers, but is slightly faster on the G4 with
+ * 256 and 512bit.
+ **/
+#define rotl64b_vectors												\
+	vector unsigned char perm_swap_halfw_64bit = {4, 5, 6, 7, 0, 1, 2, 3, 12, 13, 14, 15, 8, 9, 10, 11};	\
+	vector unsigned char perm_swap_halfw_64bit_upper = {4, 5, 6, 7, 0, 1, 2, 3, 8, 9, 10, 11, 12, 13, 14, 15};	\
+	vector unsigned char perm_swap_halfw_64bit_lower = {0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15, 8, 9, 10, 11};	\
+
+#define vec_rotl64b(input, rot_a, rot_b)						\
+{											\
+	vector unsigned int _tmp, _rot, _mask;						\
+											\
+	if (rot_a >= 32 && rot_b >= 32) {						\
+		input = vec_perm(input, input, perm_swap_halfw_64bit);			\
+	} else if (rot_a >= 32) {							\
+		input = vec_perm(input, input, perm_swap_halfw_64bit_upper);		\
+	} else if (rot_b >= 32) {							\
+		input = vec_perm(input, input, perm_swap_halfw_64bit_lower);		\
+	}										\
+	_rot = vec_splat_u32((rot_a & 0xf) | (((rot_a >> 4) & 0x1)*0xfffffff0));	\
+	_tmp = vec_splat_u32((rot_b & 0xf) | (((rot_b >> 4) & 0x1)*0xfffffff0));	\
+	_rot = vec_sld(_rot, _tmp, 8);							\
+	_mask = vec_splat_u32(0xffffffff);						\
+											\
+	input = vec_rl(input, _rot);							\
+	_mask = vec_sl(_mask, _rot);							\
+	_tmp = vec_perm(input, input, perm_swap_halfw_64bit);				\
+	input = vec_sel(_tmp, input, _mask);						\
+}
+
 
 #define InjectKey_256_altivec(r)					\
 	KeyInject_add[0] = ks[((r)+0) % (4+1)];				\
@@ -159,6 +193,8 @@
 	w0 = vec_perm(w0, w1, perm_load_upper);			\
 	w1 = vec_perm(tmp_vec0, w1, perm_load_lower);
 
+#define rotl64_vectors rotl64b_vectors
+#define vec_rotl64 vec_rotl64b
 
 void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 			     size_t blkCnt, size_t byteCntAdd)
@@ -320,6 +356,9 @@ void Skein_256_Process_Block(Skein_256_Ctxt_t * ctx, const u08b_t * blkPtr,
 	ctx->X[3] = Xi[3];
 }
 
+#undef rotl64_vectors
+#undef vec_rotl64
+
 #undef InjectKey_256_altivec
 #undef Skein_Get64_256_altivec
 
@@ -376,6 +415,8 @@ uint_t Skein_256_Unroll_Cnt(void)
 	w2 = vec_perm(tmp_vec0, tmp_vec1, perm_load_lower);	\
 	w3 = vec_perm(tmp_vec2, w3, perm_load_lower);
 
+#define rotl64_vectors rotl64b_vectors
+#define vec_rotl64 vec_rotl64b
 
 void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 			     size_t blkCnt, size_t byteCntAdd)
@@ -601,6 +642,9 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t * ctx, const u08b_t * blkPtr,
 	ctx->X[7] = Xi[7];
 }
 
+#undef rotl64_vectors
+#undef vec_rotl64
+
 #undef InjectKey_512_altivec
 #undef Skein_Get64_512_Altivec
 
@@ -689,6 +733,9 @@ uint_t Skein_512_Unroll_Cnt(void)
 	tmp_vec6 = w6;						\
 	w6 = vec_perm(tmp_vec4, tmp_vec5, perm_load_lower);	\
 	w7 = vec_perm(tmp_vec6, w7, perm_load_lower);
+
+#define rotl64_vectors rotl64a_vectors
+#define vec_rotl64 vec_rotl64a
 
 void Skein1024_Process_Block(Skein1024_Ctxt_t * ctx, const u08b_t * blkPtr,
 			     size_t blkCnt, size_t byteCntAdd)
@@ -1018,6 +1065,9 @@ void Skein1024_Process_Block(Skein1024_Ctxt_t * ctx, const u08b_t * blkPtr,
 
 	memcpy(ctx->X, Xi, 8*16);
 }
+
+#undef rotl64_vectors
+#undef vec_rotl64
 
 #undef InjectKey_1024_altivec
 #undef Skein_Get64_1024_Altivec
