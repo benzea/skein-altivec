@@ -1,0 +1,5 @@
+#! /bin/sh
+
+for file in *.data; do
+  ./convert_test_data.py <$file >`basename $file .data`_data.h
+done
